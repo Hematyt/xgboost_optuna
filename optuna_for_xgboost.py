@@ -1,27 +1,17 @@
-"""
-Optuna example that optimizes a classifier configuration for cancer dataset
-using XGBoost.
-
-In this example, we optimize the validation accuracy of cancer detection
-using XGBoost. We optimize both the choice of booster model and its
-hyperparameters.
-
-"""
-
+import dataset
 import numpy as np
+from sklearn.metrics import accuracy_score
+
+import xgboost as xgb
 import optuna
 
-import sklearn.datasets
-import sklearn.metrics
-from sklearn.model_selection import train_test_split
-import xgboost as xgb
+
+X_train, X_val, y_train, y_val = dataset.create_dataset()
 
 
 def objective(trial):
-    (data, target) = sklearn.datasets.load_breast_cancer(return_X_y=True)
-    train_x, valid_x, train_y, valid_y = train_test_split(data, target, test_size=0.25)
-    dtrain = xgb.DMatrix(train_x, label=train_y)
-    dvalid = xgb.DMatrix(valid_x, label=valid_y)
+    dtrain = xgb.DMatrix(X_train, label=y_train)
+    dvalid = xgb.DMatrix(X_val, label=y_val)
 
     param = {
         "verbosity": 0,
@@ -30,14 +20,14 @@ def objective(trial):
         "tree_method": "exact",
         # defines booster, gblinear for linear functions.
         "booster": trial.suggest_categorical("booster", ["gbtree", "gblinear", "dart"]),
-        # L2 regularization weight.
-        "lambda": trial.suggest_float("lambda", 1e-8, 1.0, log=True),
         # L1 regularization weight.
         "alpha": trial.suggest_float("alpha", 1e-8, 1.0, log=True),
         # sampling ratio for training data.
         "subsample": trial.suggest_float("subsample", 0.2, 1.0),
         # sampling according to each tree.
         "colsample_bytree": trial.suggest_float("colsample_bytree", 0.2, 1.0),
+        "max_bin": trial.suggest_int('max_bin', 100, 1000),
+        "n_estimators": 10000
     }
 
     if param["booster"] in ["gbtree", "dart"]:
@@ -59,13 +49,13 @@ def objective(trial):
     bst = xgb.train(param, dtrain)
     preds = bst.predict(dvalid)
     pred_labels = np.rint(preds)
-    accuracy = sklearn.metrics.accuracy_score(valid_y, pred_labels)
+    accuracy = accuracy_score(y_val, pred_labels)
     return accuracy
 
 
 if __name__ == "__main__":
     study = optuna.create_study(direction="maximize")
-    study.optimize(objective, n_trials=100, timeout=600)
+    study.optimize(objective, n_trials=50) # , timeout=3600)
 
     print("Number of finished trials: ", len(study.trials))
     print("Best trial:")
@@ -75,3 +65,4 @@ if __name__ == "__main__":
     print("  Params: ")
     for key, value in trial.params.items():
         print("    {}: {}".format(key, value))
+
